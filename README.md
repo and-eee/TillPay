@@ -32,6 +32,18 @@ Download **tillpayments.zip** from our [latest releases](https://github.com/till
    ***If uploaded via Wordpress please ensure the plugin is placed into the path above / named accordingly***
 1. Activate the plugin through the 'Plugins' screen in WordPress
 
+### Choosing the right Git branch
+
+The **`main`** branch tracks the currently released production plugin. If you want to test the new inline checkout experience described in this repository, clone or download the latest code from the active development branch (**`work`**) instead:
+
+```bash
+git clone https://github.com/tillpayments/woocommerce-plugin.git
+cd woocommerce-plugin
+git checkout work
+```
+
+Once the inline work is merged, it will be promoted to `main` and picked up by the packaged ZIP release.
+
 ## Plugin Activation
 
 1. Go to `WooCommerce` > `Settings` > `Payments` in your store's backoffice admin area.
