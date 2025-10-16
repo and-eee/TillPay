@@ -13,6 +13,20 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+if (defined('TILL_PAYMENTS_EXTENSION_VERSION')) {
+    $till_payments_inline_conflict_notice = function () {
+        echo '<div class="notice notice-error"><p>' . esc_html__(
+            'Another Till Payments plugin is already active. Please deactivate the original plugin before activating Till Payments Inline to avoid conflicts.',
+            'woocommerce-till-payments'
+        ) . '</p></div>';
+    };
+
+    add_action('admin_notices', $till_payments_inline_conflict_notice);
+    add_action('network_admin_notices', $till_payments_inline_conflict_notice);
+
+    return;
+}
+
 define('TILL_PAYMENTS_EXTENSION_URL', 'https://gateway.tillpayments.com/');
 define('TILL_PAYMENTS_EXTENSION_URL_TEST', 'https://test-gateway.tillpayments.com/');
 define('TILL_PAYMENTS_EXTENSION_NAME', 'Till Payments');
