@@ -1,11 +1,46 @@
-<?php
-$inline_mode = apply_filters( 'tillpayments_inline_mode', false );
-
-use TillPayments\Client\Transaction\Refund;
-
-class WC_TillPayments_CreditCard extends WC_Payment_Gateway
-{
-    public $id = 'creditcard';
+<?php
+    protected $loggerContext = ['source' => 'TillPayments_CreditCard'];
+
+    /**
+     * Whether inline checkout is active for the gateway.
+     *
+     * @var bool
+     */
+    protected $inlineMode = false;
+        $this->has_fields = false;
+
+        $this->init_form_fields();
+        $this->init_settings();
+
+        $this->inlineMode = (bool) apply_filters(
+            'tillpayments_inline_mode',
+            !empty($this->get_option('integrationKey'))
+        );
+
+        $this->has_fields = $this->inlineMode || isset($_GET['pay_for_order']);
+
+        $this->supports = array(
+            'products',
+            'refunds'
+        );
+        add_action('wp_enqueue_scripts', function () {
+            wp_register_script(
+        $this->enabled = $this->get_option('enabled', 'yes');
+
+        $this->title = $this->get_option('title');
+                $this->get_option('apiHost') . 'js/integrated/payment.1.3.min.js',
+                [],
+                TILL_PAYMENTS_EXTENSION_VERSION,
+                false
+            );
+            wp_register_script(
+                'till_payments_js_' . $this->id,
+                plugins_url('/tillpayments/assets/js/till-payments.js'),
+                ['jquery', 'payment_js'],
+                TILL_PAYMENTS_EXTENSION_VERSION,
+                true
+            );
+        }, 999);
 
     public $method_title = 'Credit Card';
 
@@ -266,9 +301,18 @@ class WC_TillPayments_CreditCard extends WC_Payment_Gateway
         /**
          * transaction
          */
-        switch ($transactionRequest) {
-            case 'preauthorize':
-                $this->log('  > sending preauthorize transaction request...');
+        $this->form_fields = [
+            'enabled' => [
+                'title' => __('Enable/Disable', 'woocommerce'),
+                'type' => 'checkbox',
+                'label' => __('Enable Till Payments credit card payments', 'woocommerce'),
+                'default' => 'yes',
+            ],
+            'title' => [
+                'title' => 'Title',
+                'type' => 'text',
+                'label' => 'Title',
+
                 $result = $client->preauthorize($transaction);
                 break;
             case 'debit':
@@ -300,41 +344,86 @@ class WC_TillPayments_CreditCard extends WC_Payment_Gateway
                     $this->order->add_meta_data('pending_capture', 'yes', true);
                     $this->order->save_meta_data();
                 }
-                return [
-                    'result' => 'success',
-                    'redirect' => $result->getRedirectUrl(),
-                ];
-            } elseif ($result->getReturnType() == TillPayments\Client\Transaction\Result::RETURN_TYPE_PENDING) {
-                /**
-                 * payment is pending, wait for callback to complete
-                 */
-                $this->log('  > return type: PENDING');
-            } elseif ($result->getReturnType() == TillPayments\Client\Transaction\Result::RETURN_TYPE_FINISHED) {
-                /**
-                 * seamless will finish here ONLY FOR NON-3DS SEAMLESS
-                 */
-                $this->order->add_meta_data('paymentUuid', $result->getReferenceId(), true);
-                $this->order->save_meta_data();
-
-                switch ($transactionRequest) {
-                    case 'preauthorize':
-                        $this->order->add_order_note('TillPayments authorization ID: '.$result->getReferenceId(), false);
-                        break;
-                    case 'debit':
-                    default:
-                        $this->order->payment_complete();
-                        $this->order->add_order_note('TillPayments purchase ID: '.$result->getPurchaseId(), false);
-                        $this->order->update_status( 'processing' );  //  AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-//                      $this->order->add_order_note('-- Order status updated to PROCESSING by TillPayments');                        
-//                      $this->order->update_status( 'rcv-paid' );  //  AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-//                      $this->order->add_order_note('-- Order status updated to RCV-PAID by TillPayments');
-                        break;
-                }
-
-                $this->log('  > return type: FINISHED');
-                $this->log('  > result data: '.print_r($result->toArray(), true));
-            }
-
+    public function payment_fields()
+    {
+        if (!$this->inlineMode) {
+            parent::payment_fields();
+            return;
+        }
+
+        wp_enqueue_script('payment_js');
+        wp_enqueue_script('till_payments_js_' . $this->id);
+
+        wp_localize_script(
+            'till_payments_js_' . $this->id,
+            'tillPaymentsInlineConfig',
+            [
+                'integrationKey' => $this->get_option('integrationKey'),
+                'gatewayId' => $this->id,
+            ]
+        );
+
+        static $stylesEnqueued = false;
+        if (!$stylesEnqueued) {
+            $stylesEnqueued = true;
+            $css = '
+.till-payments-inline-box {padding:24px;background:#fff;border-radius:6px;max-width:480px;position:relative;box-shadow:0 6px 18px rgba(31,45,61,.12);} 
+.till-payments-inline-box .form-row {margin-bottom:18px;} 
+.till-payments-inline-box .form-row-last {clear:right;} 
+.till-payments-inline-box .woocommerce-input-wrapper {display:block;} 
+.till-payments-inline-element {display:block;width:100%;min-height:48px;border-radius:4px;border:1px solid #d5d8dc;padding:14px 12px;background:#fdfdfd;} 
+.till-payments-inline-box input.input-text {height:48px;border-radius:4px;} 
+.till-payments-errors {color:#b22222;margin-bottom:16px;} 
+.till-payments-error-list {margin:0;padding-left:18px;} 
+.till-payments-inline-loader {display:none;position:absolute;top:50%;left:50%;width:40px;height:40px;margin:-20px 0 0 -20px;border:4px solid rgba(0,0,0,.1);border-top-color:#3c3c3c;border-radius:50%;animation:tillpayments-spin 1s linear infinite;} 
+.till-payments-inline-loader.is-active {display:block;} 
+.payment_box::before {display:none;} 
+.payment_box iframe {width:100% !important;} 
+@keyframes tillpayments-spin {0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}
+';
+            printf('<style id="till-payments-inline-styles">%s</style>', wp_strip_all_tags($css));
+        }
+
+        if ($this->get_description()) {
+            echo wpautop(wptexturize($this->get_description()));
+        }
+
+        ?>
+        <div id="till_payments_errors" class="till-payments-errors" role="alert" aria-live="polite"></div>
+        <div class="payment_box till-payments-inline-box">
+            <div class="till-payments-inline-loader" id="till_payments_loader" aria-hidden="true"></div>
+            <div id="till_payments_seamless" class="till-payments-inline-form" hidden>
+                <input type="hidden" id="till_payments_token" name="token" value="" />
+                <p class="form-row form-row-wide till-payments-field">
+                    <label for="till_payments_seamless_card_number"><?php echo esc_html__('Card Number', 'woocommerce'); ?> <abbr class="required" title="<?php echo esc_attr__('required', 'woocommerce'); ?>">*</abbr></label>
+                    <span class="woocommerce-input-wrapper">
+                        <span id="till_payments_seamless_card_number" class="input-text till-payments-inline-element" aria-label="<?php echo esc_attr__('Card Number', 'woocommerce'); ?>"></span>
+                    </span>
+                </p>
+
+                <p class="form-row form-row-wide till-payments-field">
+                    <label for="till_payments_seamless_card_holder"><?php echo esc_html__('Cardholder Name', 'woocommerce'); ?> <abbr class="required" title="<?php echo esc_attr__('required', 'woocommerce'); ?>">*</abbr></label>
+                    <span class="woocommerce-input-wrapper">
+                        <input type="text" class="input-text" id="till_payments_seamless_card_holder" autocomplete="cc-name" />
+                    </span>
+                </p>
+
+                <p class="form-row form-row-first till-payments-field">
+                    <label for="till_payments_seamless_expiry"><?php echo esc_html__('Expiration Date', 'woocommerce'); ?> <abbr class="required" title="<?php echo esc_attr__('required', 'woocommerce'); ?>">*</abbr></label>
+                    <span class="woocommerce-input-wrapper">
+                        <input type="text" class="input-text" id="till_payments_seamless_expiry" maxlength="5" placeholder="<?php echo esc_attr__('MM/YY', 'woocommerce'); ?>" inputmode="numeric" autocomplete="cc-exp" />
+                    </span>
+                </p>
+                <p class="form-row form-row-last till-payments-field">
+                    <label for="till_payments_seamless_cvv"><?php echo esc_html__('CVC/CVV Code', 'woocommerce'); ?> <abbr class="required" title="<?php echo esc_attr__('required', 'woocommerce'); ?>">*</abbr></label>
+                    <span class="woocommerce-input-wrapper">
+                        <span id="till_payments_seamless_cvv" class="till-payments-inline-element" aria-label="<?php echo esc_attr__('CVC/CVV Code', 'woocommerce'); ?>"></span>
+                    </span>
+                </p>
+            </div>
+        </div>
+        <?php
+    }
             if ($transactionRequest === 'preauthorize') {
                 $this->order->add_meta_data('pending_capture', 'yes', true);
                 $this->order->save_meta_data();
