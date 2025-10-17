@@ -25,7 +25,9 @@
         );
         add_action('wp_enqueue_scripts', function () {
             wp_register_script(
-                'payment_js',
+        $this->enabled = $this->get_option('enabled', 'yes');
+
+        $this->title = $this->get_option('title');
                 $this->get_option('apiHost') . 'js/integrated/payment.1.3.min.js',
                 [],
                 TILL_PAYMENTS_EXTENSION_VERSION,
@@ -299,9 +301,18 @@
         /**
          * transaction
          */
-        switch ($transactionRequest) {
-            case 'preauthorize':
-                $this->log('  > sending preauthorize transaction request...');
+        $this->form_fields = [
+            'enabled' => [
+                'title' => __('Enable/Disable', 'woocommerce'),
+                'type' => 'checkbox',
+                'label' => __('Enable Till Payments credit card payments', 'woocommerce'),
+                'default' => 'yes',
+            ],
+            'title' => [
+                'title' => 'Title',
+                'type' => 'text',
+                'label' => 'Title',
+
                 $result = $client->preauthorize($transaction);
                 break;
             case 'debit':
